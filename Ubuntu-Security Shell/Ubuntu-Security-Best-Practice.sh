@@ -12,17 +12,26 @@ check_system() {
     echo "🔍 Checking system best practices..."
     issues_found=()
 
-    # Firewall status
+    # 🔥 Firewall status
     if ! sudo ufw status | grep -q "Status: active"; then
         issues_found+=("⚠️ Firewall is disabled.")
     fi
-
-    # SSH Hardening
-    if grep -q "^PermitRootLogin yes" /etc/ssh/sshd_config; then
-        issues_found+=("⚠️ Root login over SSH is enabled.")
+    # 🔥 Check Firewall (CSF)
+    csf_status=$(sudo csf -s | grep -q "Firewall Status: Enabled" && echo "enabled")
+    if [[ -z "$csf_status" ]]; then
+        issues_found+=("⚠️ CSF Firewall is disabled.")
     fi
-    if grep -q "^PasswordAuthentication yes" /etc/ssh/sshd_config; then
-        issues_found+=("⚠️ SSH password authentication is enabled.")
+
+    # 🔥 Check SELinux Status
+    selinux_status=$(sestatus | grep "SELinux status" | awk '{print $3}')
+    if [[ "$selinux_status" != "enabled" ]]; then
+        issues_found+=("⚠️ SELinux is not enforced.")
+    fi
+
+   # 🔥 Check SSH security settings
+    ssh_status=$(grep -E 'PermitRootLogin|PasswordAuthentication' /etc/ssh/sshd_config)
+    if [[ "$ssh_status" == *"yes"* ]]; then
+        issues_found+=("⚠️ SSH root login or password authentication is enabled.")
     fi
 
     # Malware scan
@@ -59,6 +68,14 @@ apply_fixes() {
                     echo "🚀 Enabling firewall..."
                     sudo ufw enable
                     ;;
+                "⚠️ CSF Firewall is disabled.")
+                    echo "🚀 Enabling CSF Firewall..."
+                    sudo csf -e
+                    ;;
+                "⚠️ SELinux is not enforced.")
+                    echo "🚀 Enforcing SELinux..."
+                    sudo setenforce 1
+                    ;;
                 "⚠️ Root login over SSH is enabled.")
                     echo "🚀 Disabling root login..."
                     sudo sed -i 's/^PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
@@ -82,6 +99,28 @@ apply_fixes() {
         echo "❌ No changes made."
     fi
 }
+
+# Function to install SELinux & CSF if missing
+install_security_tools() {
+    echo "🔧 Checking for required security tools..."
+    
+    # Install CSF if not present
+    if ! command -v csf &> /dev/null; then
+        echo "🚀 Installing CSF Firewall..."
+        cd /usr/src
+        wget https://download.configserver.com/csf.tgz
+        tar -xzf csf.tgz
+        cd csf
+        sudo bash install.sh
+    fi
+    
+    # Install SELinux utilities if missing
+    if ! command -v sestatus &> /dev/null; then
+        echo "🚀 Installing SELinux utilities..."
+        sudo apt install selinux-utils policycoreutils -y
+    fi
+}
+
 send_report() {
     echo -e "\n📡 Sending system health report..."
     cat ~/system_health_report.log | mail -s "Ubuntu Security Report" your@email.com
@@ -92,7 +131,9 @@ schedule_check() {
     echo "0 3 * * * ~/system_check.sh" | crontab -
 }
 
+
 ## Uncomment what you want to run:
+install_security_tools
 check_system
 #apply_fixes
 #send_report
