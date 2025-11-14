@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment # Kubernetes resource kind we are creating
+metadata:
+  name: notepad-app-deployment
+spec:
+  selector:
+    matchLabels:
+      app: notepad-app
+  replicas: 2 # Number of replicas that will be created for this deployment
+  template:
+    metadata:
+      labels:
+        app: notepad-app
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: notepad-app
+          image: zivoz/private:notepad-app # Image that will be used to containers in the cluster
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 443 # The port that the container is running on in the cluster
+---
+
+apiVersion: v1 # Kubernetes API version
+kind: Service # Kubernetes resource kind we are creating
+metadata: # Metadata of the resource kind we are creating
+  name: notepad-app-ssvc
+spec:
+  selector:
+    app: notepad-app
+  ports:
+    - protocol: "TCP"
+      port: 443
+      targetPort: 443 
+  type: LoadBalancer # type of the service.
